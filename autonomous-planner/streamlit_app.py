@@ -6,6 +6,7 @@ from datetime import datetime
 import plotly.express as px
 import plotly.graph_objects as go
 import json
+from sqlalchemy import create_engine
 
 # Database configuration
 DB_CONFIG = {
@@ -15,6 +16,16 @@ DB_CONFIG = {
     "user": "agentzero",
     "password": "",
 }
+
+# SQLAlchemy engine for pandas compatibility
+DATABASE_URL = f"postgresql://{DB_CONFIG['user']}:{DB_CONFIG['password']}@{DB_CONFIG['host']}:{DB_CONFIG['port']}/{DB_CONFIG['database']}"
+
+
+@st.cache_resource
+def get_sqlalchemy_engine():
+    """Create SQLAlchemy engine for pandas compatibility"""
+    return create_engine(DATABASE_URL)
+
 
 # Page configuration
 st.set_page_config(
@@ -92,10 +103,7 @@ def return_connection(conn):
 @st.cache_data(ttl=300)
 def load_sessions_data():
     """Load all session metadata"""
-    conn = get_db_connection()
-    if not conn:
-        return pd.DataFrame()
-
+    engine = get_sqlalchemy_engine()
     try:
         query = """
         SELECT session_id, title, created_at, updated_at, projectid, directory,
@@ -103,32 +111,71 @@ def load_sessions_data():
         FROM raw_session_metadata
         ORDER BY created_at DESC
         """
-        df = pd.read_sql_query(query, conn)
+        df = pd.read_sql_query(query, engine)
         return df
     except Exception as e:
         st.error(f"Error loading sessions data: {e}")
         return pd.DataFrame()
-    finally:
-        return_connection(conn)
 
 
 @st.cache_data(ttl=300)
 def load_analysis_data():
     """Load all analysis results"""
-    conn = get_db_connection()
-    if not conn:
-        return pd.DataFrame()
-
+    engine = get_sqlalchemy_engine()
     try:
         query = """
         SELECT session_id, analysis_type, metric_name, metric_value
         FROM session_analysis_results
         """
-        df = pd.read_sql_query(query, conn)
+        df = pd.read_sql_query(query, engine)
         return df
     except Exception as e:
         st.error(f"Error loading analysis data: {e}")
         return pd.DataFrame()
+
+
+@st.cache_data(ttl=300)
+def get_summary_stats():
+    """Get summary statistics for dashboard"""
+    conn = get_db_connection()
+    if not conn:
+        return {}
+
+    try:
+        stats = {}
+
+        # Total sessions
+        with conn.cursor() as cursor:
+            cursor.execute("SELECT COUNT(*) FROM raw_session_metadata")
+            stats["total_sessions"] = cursor.fetchone()[0]
+
+        # Total analysis records
+        with conn.cursor() as cursor:
+            cursor.execute("SELECT COUNT(*) FROM session_analysis_results")
+            stats["total_analysis"] = cursor.fetchone()[0]
+
+        # Last updated
+        with conn.cursor() as cursor:
+            cursor.execute("SELECT MAX(last_updated) FROM ingestion_state")
+            last_update = cursor.fetchone()[0]
+            stats["last_updated"] = last_update if last_update else None
+
+        # Sessions by project
+        with conn.cursor() as cursor:
+            cursor.execute("""
+            SELECT projectid, COUNT(*) as count
+            FROM raw_session_metadata
+            WHERE projectid IS NOT NULL
+            GROUP BY projectid
+            ORDER BY count DESC
+            LIMIT 10
+            """)
+            stats["top_projects"] = cursor.fetchall()
+
+        return stats
+    except Exception as e:
+        st.error(f"Error getting summary stats: {e}")
+        return {}
     finally:
         return_connection(conn)
 
