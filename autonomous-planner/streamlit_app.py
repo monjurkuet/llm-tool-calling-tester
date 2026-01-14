@@ -50,15 +50,43 @@ st.markdown(
 )
 
 
+import psycopg2.pool
+
+
+# Database connection pool
 @st.cache_resource
-def get_db_connection():
-    """Create and return database connection"""
+def get_connection_pool():
+    """Create connection pool for database access"""
     try:
-        conn = psycopg2.connect(**DB_CONFIG)
+        pool = psycopg2.pool.SimpleConnectionPool(minconn=1, maxconn=5, **DB_CONFIG)
+        return pool
+    except Exception as e:
+        st.error(f"Connection pool creation failed: {e}")
+        return None
+
+
+def get_db_connection():
+    """Get connection from pool"""
+    pool = get_connection_pool()
+    if not pool:
+        return None
+    try:
+        conn = pool.getconn()
         return conn
     except Exception as e:
-        st.error(f"Database connection failed: {e}")
+        st.error(f"Failed to get connection from pool: {e}")
         return None
+
+
+def return_connection(conn):
+    """Return connection to pool"""
+    if conn:
+        pool = get_connection_pool()
+        if pool:
+            try:
+                pool.putconn(conn)
+            except Exception:
+                pass  # Pool might be closed
 
 
 @st.cache_data(ttl=300)
@@ -81,7 +109,7 @@ def load_sessions_data():
         st.error(f"Error loading sessions data: {e}")
         return pd.DataFrame()
     finally:
-        conn.close()
+        return_connection(conn)
 
 
 @st.cache_data(ttl=300)
@@ -93,12 +121,81 @@ def load_analysis_data():
 
     try:
         query = """
-        SELECT session_id, analysis_type, metric_name,
-               jsonb_object_keys(metric_value) as metric_key,
-               metric_value->>jsonb_object_keys(metric_value) as metric_value
+        SELECT session_id, analysis_type, metric_name, metric_value
         FROM session_analysis_results
         """
         df = pd.read_sql_query(query, conn)
+        return df
+    except Exception as e:
+        st.error(f"Error loading analysis data: {e}")
+        return pd.DataFrame()
+    finally:
+        return_connection(conn)
+
+
+@st.cache_data(ttl=300)
+def get_summary_stats():
+    """Get summary statistics for dashboard"""
+    conn = get_db_connection()
+    if not conn:
+        return {}
+
+    try:
+        stats = {}
+
+        # Total sessions
+        with conn.cursor() as cursor:
+            cursor.execute("SELECT COUNT(*) FROM raw_session_metadata")
+            stats["total_sessions"] = cursor.fetchone()[0]
+
+        # Total analysis records
+        with conn.cursor() as cursor:
+            cursor.execute("SELECT COUNT(*) FROM session_analysis_results")
+            stats["total_analysis"] = cursor.fetchone()[0]
+
+        # Last updated
+        with conn.cursor() as cursor:
+            cursor.execute("SELECT MAX(last_updated) FROM ingestion_state")
+            last_update = cursor.fetchone()[0]
+            stats["last_updated"] = last_update if last_update else None
+
+        # Sessions by project
+        with conn.cursor() as cursor:
+            cursor.execute("""
+            SELECT projectid, COUNT(*) as count
+            FROM raw_session_metadata
+            WHERE projectid IS NOT NULL
+            GROUP BY projectid
+            ORDER BY count DESC
+            LIMIT 10
+            """)
+            stats["top_projects"] = cursor.fetchall()
+
+        return stats
+    except Exception as e:
+        st.error(f"Error getting summary stats: {e}")
+        return {}
+    finally:
+        return_connection(conn)
+
+
+@st.cache_data(ttl=300)
+def load_analysis_data():
+    """Load all analysis results"""
+    conn = get_db_connection()
+    if not conn:
+        return pd.DataFrame()
+
+    try:
+        query = """
+        SELECT session_id, analysis_type, metric_name, metric_value
+        FROM session_analysis_results
+        """
+        df = pd.read_sql_query(query, conn)
+        # Convert JSONB values to Python objects
+        df["metric_value"] = df["metric_value"].apply(
+            lambda x: json.loads(x) if isinstance(x, str) else x
+        )
         return df
     except Exception as e:
         st.error(f"Error loading analysis data: {e}")
