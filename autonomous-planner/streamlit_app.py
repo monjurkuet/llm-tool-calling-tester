@@ -259,7 +259,9 @@ def show_session_details():
                 st.markdown("\n".join(metrics))
 
                 # Simple bar chart for numeric metrics
-                numeric_metrics = type_data[type_data["metric_value"].str.match(r"^\d+(\.\d+)?$")]
+                numeric_metrics = type_data[
+                    type_data["metric_value"].astype(str).str.match(r"^\d+(\.\d+)?$")
+                ]
                 if not numeric_metrics.empty:
                     chart_data = numeric_metrics.copy()
                     chart_data["metric_value"] = pd.to_numeric(
@@ -274,7 +276,7 @@ def show_session_details():
                             y="metric_value",
                             title=f"{analysis_type.replace('_', ' ').title()} Metrics",
                         )
-                        st.plotly_chart(fig, use_container_width=True)
+                        st.plotly_chart(fig, width="stretch")
         else:
             st.info("No analysis data available for this session")
 
@@ -340,7 +342,7 @@ def show_overview():
             color="Sessions",
             color_continuous_scale="Blues",
         )
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, width="stretch")
     else:
         st.info("No project data available")
 
@@ -386,7 +388,7 @@ def show_sessions_browser():
         filtered_df[
             ["session_id", "title", "created_at", "projectid", "files", "additions", "deletions"]
         ],
-        use_container_width=True,
+        width="stretch",
         column_config={
             "session_id": st.column_config.TextColumn("Session ID", width="small"),
             "title": st.column_config.TextColumn("Title", width="large"),
@@ -440,15 +442,15 @@ def show_analytics():
 
     with col1:
         fig = px.histogram(sessions_df, x="files", title="Files Changed Distribution", nbins=20)
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, width="stretch")
 
     with col2:
         fig = px.histogram(sessions_df, x="additions", title="Lines Added Distribution", nbins=20)
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, width="stretch")
 
     with col3:
         fig = px.histogram(sessions_df, x="deletions", title="Lines Deleted Distribution", nbins=20)
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, width="stretch")
 
 
 def main():
