@@ -303,6 +303,51 @@ curl -X POST http://localhost:5000/trigger/analysis_report  # Analysis + Report 
 - `session_analysis_summary.md`: Markdown summary with session-by-session analysis
 - `session_analysis_export.csv`: Full CSV export of all analysis results
 
+## Streamlit Dashboard
+
+A interactive web dashboard for visualizing session analysis data.
+
+### Features
+- **Overview Dashboard**: Key metrics, processing status, and project distribution charts
+- **Sessions Browser**: Searchable and filterable table of all sessions with metadata
+- **Analytics**: Time-series trends, activity distributions, and interactive charts
+- **Data Export**: Download filtered results as CSV
+- **Real-time Refresh**: Manual data refresh with caching
+
+### Running the Dashboard
+```bash
+cd /home/administrator/dev/customLLM/autonomous-planner
+source .venv/bin/activate
+streamlit run streamlit_app.py
+```
+
+Access at: http://localhost:8501
+
+### Dashboard Pages
+1. **Overview**: Summary statistics and top projects chart
+2. **Sessions Browser**: Browse all sessions with filters and search
+3. **Analytics**: Detailed visualizations and trends
+
+### Requirements
+- PostgreSQL database with session data
+- Streamlit, pandas, plotly installed
+- Database connection configured in `streamlit_app.py`
+
+### Docker Deployment
+```bash
+# Build the image
+docker build -t session-analysis-dashboard .
+
+# Run the container
+docker run -p 8501:8501 -e DB_HOST=host.docker.internal session-analysis-dashboard
+```
+
+### Streamlit Cloud Deployment
+1. Push code to GitHub
+2. Connect repository to share.streamlit.io
+3. Configure secrets for database connection
+4. Deploy automatically
+
 ---
 
 **Last Updated**: January 2026
